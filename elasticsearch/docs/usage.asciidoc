@@ -1,0 +1,328 @@
+[[client-usage]]
+== Usage
+
+Using the client is straightforward, it supports all the public APIs of {es},
+and every method exposes the same signature.
+
+
+[source,js]
+----
+const { Client } = require('@elastic/elasticsearch')
+const client = new Client({ node: 'http://localhost:9200' })
+
+// promise API
+const result = await client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+})
+
+// callback API
+client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+}, (err, result) => {
+  if (err) console.log(err)
+})
+----
+
+The returned value of every API call is formed as follows:
+
+[source,ts]
+----
+{
+  body: object | boolean
+  statusCode: number
+  headers: object
+  warnings: [string],
+  meta: object
+}
+----
+
+NOTE: The body is a boolean value when you use `HEAD` APIs.
+
+The above value is returned even if there is an error during the execution of
+the request, this means that you can safely use the
+https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Destructuring_assignment[destructuring assignment].
+
+The `meta` key contains all the information about the request, such as attempt,
+options, and the connection that has been used.
+
+[source,js]
+----
+// promise API
+const { body } = await client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+})
+
+// callback API
+client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+}, (err, { body }) => {
+  if (err) console.log(err)
+})
+----
+
+
+=== Aborting a request
+
+If needed, you can abort a running request by calling the `request.abort()` method returned by the API.
+
+CAUTION: If you abort a request, the request will fail with a `RequestAbortedError`.
+
+
+[source,js]
+----
+const request = client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+}, {
+  ignore: [404],
+  maxRetries: 3
+}, (err, result) => {
+  if (err) {
+    console.log(err) // RequestAbortedError
+  } else {
+    console.log(result)
+  }
+})
+
+request.abort()
+----
+
+The same behavior is valid for the promise style API as well.
+[source,js]
+----
+const request = client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+}, {
+  ignore: [404],
+  maxRetries: 3
+})
+
+request
+  .then(result => console.log(result))
+  .catch(err => console.log(err)) // RequestAbortedError
+
+request.abort()
+----
+
+
+=== Request specific options
+If needed you can pass request specific options in a second object:
+
+[source,js]
+----
+// promise API
+const result = await client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+}, {
+  ignore: [404],
+  maxRetries: 3
+})
+
+// callback API
+client.search({
+  index: 'my-index',
+  body: {
+    query: {
+      match: { hello: 'world' }
+    }
+  }
+}, {
+  ignore: [404],
+  maxRetries: 3
+}, (err, { body }) => {
+  if (err) console.log(err)
+})
+----
+
+
+The supported request specific options are:
+[cols=2*]
+|===
+|`ignore`
+|`[number]` -  HTTP status codes which should not be considered errors for this request. +
+_Default:_ `null`
+
+|`requestTimeout`
+|`number` - Max request timeout for the request in milliseconds, it overrides the client default. +
+_Default:_ `30000`
+
+|`maxRetries`
+|`number` - Max number of retries for the request, it overrides the client default. +
+_Default:_ `3`
+
+|`compression`
+|`string, boolean` - Enables body compression for the request. +
+_Options:_ `false`, `'gzip'` +
+_Default:_ `false`
+
+|`asStream`
+|`boolean` - Instead of getting the parsed body back, you get the raw Node.js stream of data. +
+_Default:_ `false`
+
+|`headers`
+|`object` - Custom headers for the request. +
+_Default:_ `null`
+
+|`querystring`
+|`object` - Custom querystring for the request. +
+_Default:_ `null`
+
+|`id`
+|`any` - Custom request id. _(overrides the top level request id generator)_ +
+_Default:_ `null`
+
+|`context`
+|`any` - Custom object per request. _(you can use it to pass data to the clients events)_ +
+_Default:_ `null`
+|===
+
+=== Connecting through a proxy
+
+~Added~ ~in~ ~`v7.10.0`~
+
+If you need to pass through an http(s) proxy for connecting to Elasticsearch, the client offers
+out of the box a handy configuration for helping you with it. Under the hood it
+uses the https://github.com/delvedor/hpagent[`hpagent`] module.
+
+[source,js]
+----
+const client = new Client({
+  node: 'http://localhost:9200',
+  proxy: 'http://localhost:8080'
+})
+----
+
+Basic authentication is supported as well:
+
+[source,js]
+----
+const client = new Client({
+  node: 'http://localhost:9200',
+  proxy: 'http:user:pwd@//localhost:8080'
+})
+----
+
+If you are connecting through a not http(s) proxy, such as a `socks5` or `pac`,
+you can use the `agent` option to configure it.
+
+[source,js]
+----
+const SocksProxyAgent = require('socks-proxy-agent')
+const client = new Client({
+  node: 'http://localhost:9200',
+  agent () {
+    return new SocksProxyAgent('socks://127.0.0.1:1080')
+  }
+})
+----
+
+=== Error handling
+
+The client exposes a variety of error objects that you can use to enhance your
+error handling. You can find all the error objects inside the `errors` key in
+the client.
+
+[source,js]
+----
+const { errors } = require('@elastic/elasticsearch')
+console.log(errors)
+----
+
+
+You can find the errors exported by the client in the table below.
+
+[cols=3*]
+|===
+|*Error*
+|*Description*
+|*Properties*
+
+|`ElasticsearchClientError`
+|Every error inherits from this class, it is the basic error generated by the client.
+a|* `name` - `string`
+* `message` - `string`
+
+|`TimeoutError`
+|Generated when a request exceeds the `requestTimeout` option.
+a|* `name` - `string`
+* `message` - `string`
+* `meta` - `object`, contains all the information about the request
+
+|`ConnectionError`
+|Generated when an error occurs during the request, it can be a connection error or a malformed stream of data.
+a|* `name` - `string`
+* `message` - `string`
+* `meta` - `object`, contains all the information about the request
+
+|`RequestAbortedError`
+|Generated if the user calls the `request.abort()` method.
+a|* `name` - `string`
+* `message` - `string`
+* `meta` - `object`, contains all the information about the request
+
+|`NoLivingConnectionsError`
+|Given the configuration, the ConnectionPool was not able to find a usable Connection for this request.
+a|* `name` - `string`
+* `message` - `string`
+* `meta` - `object`, contains all the information about the request
+
+|`SerializationError`
+|Generated if the serialization fails.
+a|* `name` - `string`
+* `message` - `string`
+* `data` - `object`, the object to serialize
+
+|`DeserializationError`
+|Generated if the deserialization fails.
+a|* `name` - `string`
+* `message` - `string`
+* `data` - `string`, the string to deserialize
+
+|`ConfigurationError`
+|Generated if there is a malformed configuration or parameter.
+a|* `name` - `string`
+* `message` - `string`
+
+|`ResponseError`
+|Generated when in case of a `4xx` or `5xx` response.
+a|* `name` - `string`
+* `message` - `string`
+* `meta` - `object`, contains all the information about the request
+* `body` - `object`, the response body
+* `statusCode` - `object`, the response headers
+* `headers` - `object`, the response status code
+|===
