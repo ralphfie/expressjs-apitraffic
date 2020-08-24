@@ -1,0 +1,149 @@
+[[typescript]]
+
+== TypeScript support
+
+The client offers a first-class support for TypeScript, since it ships the type 
+definitions for every exposed API.
+
+NOTE: If you are using TypeScript you will be required to use _snake_case_ style 
+to define the API parameters instead of _camelCase_. 
+
+By default event API uses https://www.typescriptlang.org/docs/handbook/generics.html[generics] to specify the requets and response bodies and the `meta.context`. Currently we can't provide those definitions, but we are working to improve this situation.
+
+You can find a partial definition of the request types by importing `RequestParams`, which is used by default in the client and accepts a body (when needed) as a generic to provide a better specification.
+
+The body defaults to `RequestBody` and `RequestNDBody`, which are defined as follows:
+
+[source,ts]
+----
+type RequestBody<T = Record<string, any>>  = T | string | Buffer | ReadableStream
+type RequestNDBody<T = Record<string, any>[]>  = T | string | string[] | Buffer | ReadableStream
+----
+
+You can specify the response and request body in each API as follows:
+
+[source,ts]
+----
+const response = await client.search<ResponseBody, RequestBody, Context>({
+  index: 'test',
+  body: {
+    query: {
+      match: { foo: 'bar' }
+    }
+  }
+})
+
+console.log(response.body)
+----
+
+You don't have to specify all the generics, but the order must be respected.
+
+
+=== A complete example
+
+[source,ts]
+----
+import {
+  Client,
+  // Object that contains the type definitions of every API method
+  RequestParams,
+  // Interface of the generic API response
+  ApiResponse,
+} from '@elastic/elasticsearch'
+
+const client = new Client({ node: 'http://localhost:9200' })
+
+// Define the type of the body for the Search request
+interface SearchBody {
+  query: {
+    match: { foo: string }
+  }
+}
+
+// Complete definition of the Search response
+interface ShardsResponse {
+  total: number;
+  successful: number;
+  failed: number;
+  skipped: number;
+}
+
+interface Explanation {
+  value: number;
+  description: string;
+  details: Explanation[];
+}
+
+interface SearchResponse<T> {
+  took: number;
+  timed_out: boolean;
+  _scroll_id?: string;
+  _shards: ShardsResponse;
+  hits: {
+    total: number;
+    max_score: number;
+    hits: Array<{
+      _index: string;
+      _type: string;
+      _id: string;
+      _score: number;
+      _source: T;
+      _version?: number;
+      _explanation?: Explanation;
+      fields?: any;
+      highlight?: any;
+      inner_hits?: any;
+      matched_queries?: string[];
+      sort?: string[];
+    }>;
+  };
+  aggregations?: any;
+}
+
+// Define the interface of the source object
+interface Source {
+  foo: string
+}
+
+async function run () {
+  // All of the examples below are valid code, by default,
+  // the request body will be `RequestBody` and response will be `Record<string, any>`.
+  const response = await client.search({
+    index: 'test',
+    body: {
+      query: {
+        match: { foo: 'bar' }
+      }
+    }
+  })
+  // body here is `ResponseBody`
+  console.log(response.body)
+
+  // The first generic is the response body
+  const response = await client.search<SearchResponse<Source>>({
+    index: 'test',
+    // Here the body must follow the `RequestBody` interface
+    body: {
+      query: {
+        match: { foo: 'bar' }
+      }
+    }
+  })
+  // body here is `SearchResponse<Source>`
+  console.log(response.body)
+
+  const response = await client.search<SearchResponse<Source>, SearchBody>({
+    index: 'test',
+    // Here the body must follow the `SearchBody` interface
+    body: {
+      query: {
+        match: { foo: 'bar' }
+      }
+    }
+  })
+  // body here is `SearchResponse<Source>`
+  console.log(response.body)
+}
+
+run().catch(console.log)
+----
